@@ -1,0 +1,114 @@
+SELECT
+    s.symbol_id,
+    s.symbol,
+    p.timeframe,
+    MAX(p.date) AS latest_date
+FROM symbols s
+JOIN price_data p
+    ON s.symbol_id = p.symbol_id
+WHERE p.timeframe IN ('1d', '1wk', '1mo')
+GROUP BY s.symbol_id, s.symbol, p.timeframe
+ORDER BY s.symbol, p.timeframe;
+
+---------------------------------------------------------
+
+SELECT *
+FROM (
+    SELECT
+        s.symbol,
+        MAX(CASE WHEN p.timeframe = '1d'  THEN p.date END) AS d1,
+        MAX(CASE WHEN p.timeframe = '1wk' THEN p.date END) AS wk1,
+        MAX(CASE WHEN p.timeframe = '1mo' THEN p.date END) AS mo1
+    FROM equity_symbols s
+    LEFT JOIN equity_price_data p
+        ON s.symbol_id = p.symbol_id
+    GROUP BY s.symbol
+)
+WHERE d1 IS NULL OR wk1 IS NULL OR mo1 IS NULL;
+---------------------------------------------------------
+SELECT *
+FROM (
+    SELECT
+        s.index_code,
+        MAX(CASE WHEN p.timeframe = '1d'  THEN p.date END) AS d1,
+        MAX(CASE WHEN p.timeframe = '1wk' THEN p.date END) AS wk1,
+        MAX(CASE WHEN p.timeframe = '1mo' THEN p.date END) AS mo1
+    FROM index_symbols s
+    LEFT JOIN index_price_data p
+        ON s.index_id = p.index_id
+    WHERE s.is_active = 1
+    GROUP BY s.index_code
+)
+WHERE d1 IS NULL
+   OR wk1 IS NULL
+   OR mo1 IS NULL;
+---------------------------------------------------------
+Check symbols that are not downloaded 
+SELECT
+    s.symbol_id,
+    s.symbol,
+    s.symbol
+FROM equity_symbols s
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM equity_price_data p
+    WHERE p.symbol_id = s.symbol_id
+      AND p.timeframe = '1d'
+      AND p.date = '2025-12-24'
+)
+ORDER BY s.symbol;
+
+
+---------------------------------------------------------
+TO BE ADDED IN THE CREATE_DB SCRIPT LATER
+CREATE TABLE IF NOT EXISTS equity_price_partial (
+    symbol_id       INTEGER NOT NULL,
+    timeframe       TEXT NOT NULL,
+    date            DATE NOT NULL,
+
+    open            REAL,
+    high            REAL,
+    low             REAL,
+    close           REAL,
+    adj_close       REAL,
+	volume 		REAL,
+
+    PRIMARY KEY (symbol_id, timeframe, date),
+    FOREIGN KEY (symbol_id) REFERENCES equity_symbols(symbol_id),
+    FOREIGN KEY (timeframe) REFERENCES timeframes(timeframe)
+);
+
+CREATE INDEX IF NOT EXISTS idx_eq_price_partial
+    ON equity_price_partial(symbol_id, timeframe, date);
+
+
+
+        CREATE TABLE IF NOT EXISTS equity_indicators_partial (
+            symbol_id INTEGER NOT NULL,
+            timeframe TEXT NOT NULL,
+            date DATE NOT NULL,
+
+            sma_20 REAL,
+            sma_50 REAL,
+            sma_200 REAL,
+            rsi_3 REAL,
+            rsi_9 REAL,
+            rsi_14 REAL,
+            macd REAL,
+            macd_signal REAL,
+            bb_upper REAL,
+            bb_middle REAL,
+            bb_lower REAL,
+            atr_14 REAL,
+            supertrend REAL,
+            supertrend_dir INTEGER,
+            ema_rsi_9_3 REAL,
+            wma_rsi_9_21 REAL,
+            pct_price_change REAL,
+
+            PRIMARY KEY (symbol_id, timeframe, date),
+            FOREIGN KEY (symbol_id) REFERENCES equity_symbols(symbol_id),
+            FOREIGN KEY (timeframe) REFERENCES timeframes(timeframe)
+        );
+		CREATE INDEX IF NOT EXISTS idx_eq_ind_partial
+        ON equity_indicators_partial(symbol_id, timeframe, date);
