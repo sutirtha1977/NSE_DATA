@@ -25,7 +25,8 @@ MAIN_MENU_ITEMS = [
     ("10", "Update Incremental Equity Indicators", "Run Daily", "yellow"),
     ("11", "Update Incremental Index Indicators", "Run Daily", "yellow"),
     ("12", "Update Partial Week and Month Data", "Run Daily", "yellow"),
-    ("13", "Update Partial Week and Month Indicators", "Run Daily", "yellow"),
+    ("13", "Update Partial Week and Month Data Based on Date supplied", "Run As Required", "yellow"),
+    ("14", "Update Partial Week and Month Indicators", "Run Daily", "yellow"),
     ("0", "Exit", "", "white"),
 ]
 NSE_INDICES = [

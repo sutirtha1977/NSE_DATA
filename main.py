@@ -13,14 +13,15 @@ from data_manager import (
     refresh_indices,
     download_equity_price_data_all_timeframes,
     download_index_price_data_all_timeframes,
-    refresh_52week_stats,
-    check_export_csv_missing_data
+    refresh_52week_stats
+    # check_export_csv_missing_data
 )
 from create_db import create_stock_database
 from indicators import (
     refresh_indicators, 
     refresh_equity_partial_prices,
-    refresh_equity_partial_indicators
+    refresh_equity_partial_indicators,
+    refresh_equity_partial_prices_datewise
 )
 
 console = Console()
@@ -77,18 +78,23 @@ def data_manager_user_input():
                     refresh_indices(conn)
                 elif choice == "4":
                     # Fetch all Equity Price Data
-                    download_equity_price_data_all_timeframes(conn, "ALL")
-                    # Export CSV of missing data
-                    check_export_csv_missing_data(conn, is_index=False)
+                    daily_dt = Prompt.ask("Enter Daily End Date (YYYY-MM-DD)")
+                    weekly_dt = Prompt.ask("Enter Weekly End Date (YYYY-MM-DD)")
+                    monthly_dt = Prompt.ask("Enter Monthly End Date (YYYY-MM-DD)")
+                    download_equity_price_data_all_timeframes(conn, "ALL",daily_dt,weekly_dt,monthly_dt)
                 elif choice == "5":
                     # Fetch one/multi Equity Price Data
                     syms = Prompt.ask("Enter symbols (comma separated, e.g., RELIANCE,TCS)")
-                    download_equity_price_data_all_timeframes(conn, syms)
+                    daily_dt = Prompt.ask("Enter Daily End Date (YYYY-MM-DD)")
+                    weekly_dt = Prompt.ask("Enter Weekly End Date (YYYY-MM-DD)")
+                    monthly_dt = Prompt.ask("Enter Monthly End Date (YYYY-MM-DD)")
+                    download_equity_price_data_all_timeframes(conn, syms,daily_dt,weekly_dt,monthly_dt)
                 elif choice == "6":
                     # Fetch all Index Price Data
-                    download_index_price_data_all_timeframes(conn, lookback_years=20)
-                    # Export CSV of missing data
-                    check_export_csv_missing_data(conn, is_index=True)
+                    daily_dt = Prompt.ask("Enter Daily End Date (YYYY-MM-DD)")
+                    weekly_dt = Prompt.ask("Enter Weekly End Date (YYYY-MM-DD)")
+                    monthly_dt = Prompt.ask("Enter Monthly End Date (YYYY-MM-DD)")
+                    download_index_price_data_all_timeframes(conn, daily_dt,weekly_dt,monthly_dt,lookback_years=20)
                 elif choice == "7":
                     console.print("\n[bold green]Start 52 weeks stat run for equity...[/bold green]")
                     # Update Equity 52 Week High Low
@@ -111,10 +117,14 @@ def data_manager_user_input():
                     # Update Incremental Index Indicators
                     refresh_indicators(conn, is_indexs=True, incremental=True)
                 elif choice == "12":
-                    # Update Incremental Index Indicators
+                    # Update partial equity prices for weekly and monthly
                     refresh_equity_partial_prices(conn)
                 elif choice == "13":
-                    # Update Partial Equity Indicators
+                    # Update partial equity prices for weekly and monthly datewise
+                    run_dt = Prompt.ask("Enter Date (YYYY-MM-DD)")
+                    refresh_equity_partial_prices_datewise(conn,run_dt)
+                elif choice == "14":
+                    # Update Partial Equity Indicators for weekly and monthly
                     refresh_equity_partial_indicators(conn)
                 else:
                     console.print("[bold red]❌ Invalid choice![/bold red]")
