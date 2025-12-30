@@ -22,7 +22,7 @@ FROM (
     FROM equity_symbols s
     LEFT JOIN equity_price_data p
         ON s.symbol_id = p.symbol_id
-    GROUP BY s.symbol
+    GROUP BY s.symbol_id
 )
 WHERE d1 IS NULL OR wk1 IS NULL OR mo1 IS NULL;
 ---------------------------------------------------------
@@ -37,7 +37,7 @@ FROM (
     LEFT JOIN index_price_data p
         ON s.index_id = p.index_id
     WHERE s.is_active = 1
-    GROUP BY s.index_code
+    GROUP BY s.index_id
 )
 WHERE d1 IS NULL
    OR wk1 IS NULL

@@ -217,20 +217,23 @@ WHERE
 	AND d.close_10d IS NOT NULL
 ORDER BY d.date DESC, s.symbol;
 """
-SQL_MISSING_TEMPLATE = """
-    SELECT symbol
-    FROM (
-        SELECT
-            s.symbol
-        FROM {symbols_table} s
-        LEFT JOIN {price_table} p
-            ON s.{id_col} = p.{id_col}
-        GROUP BY s.symbol
-    )
-    WHERE d1 IS NULL OR wk1 IS NULL OR mo1 IS NULL;
-"""
+# SQL_MISSING_TEMPLATE = """
+#     SELECT {id_col}
+#     FROM (
+#         SELECT
+#             s.{id_col},
+#             MAX(CASE WHEN p.timeframe = '1d'  THEN p.date END) AS d1,
+#             MAX(CASE WHEN p.timeframe = '1wk' THEN p.date END) AS wk1,
+#             MAX(CASE WHEN p.timeframe = '1mo' THEN p.date END) AS mo1
+#         FROM {symbols_table} s
+#         LEFT JOIN {price_table} p
+#             ON s.{id_col} = p.{id_col}
+#         GROUP BY s.{id_col}
+#     )
+#     WHERE d1 IS NULL OR wk1 IS NULL OR mo1 IS NULL;
+# """
 SQL_MAP = {
     1: SQL_SCANNER_1,
     2: SQL_SCANNER_2,
-    3: SQL_MISSING_TEMPLATE,
+    # 3: SQL_MISSING_TEMPLATE,
 }
