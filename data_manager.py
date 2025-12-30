@@ -302,19 +302,14 @@ def refresh_indices(conn):
     log(f"Index symbols refreshed: {len(records)} total")
 
 # DOWNLOAD EQUITY SYMBOLS FROM YAHOO FINANCE
-def download_equity_price_data_all_timeframes(conn,symbol):
-    """
-    - Full download on first run
-    - Incremental updates afterwards
-    - Daily, Weekly, Monthly in one run
-    """
-
+def download_equity_price_data_all_timeframes(conn, symbol, daily_dt, weekly_dt, monthly_dt):
     try:
         symbols_df = retrieve_equity_symbol(symbol, conn)
 
         if symbols_df.empty:
             log("NO SYMBOLS FOUND")
             return
+
         for timeframe in FREQUENCIES:
             # MONTHLY SKIP CONTROL
             if SKIP_MONTHLY and timeframe == "1mo":
@@ -324,7 +319,13 @@ def download_equity_price_data_all_timeframes(conn,symbol):
             if SKIP_WEEKLY and timeframe == "1wk":
                 log("Skipping 1wk (weekly-skip mode)")
                 continue
-
+            
+            # end_dt = {"1d": daily_dt, "1wk": weekly_dt, "1mo": monthly_dt}.get(timeframe)
+            end_dt = (
+                        datetime.strptime({"1d": daily_dt, "1wk": weekly_dt, "1mo": monthly_dt}[timeframe], "%Y-%m-%d")
+                        + timedelta(days=1)
+                    ).strftime("%Y-%m-%d")
+            
             log(f"===== FETCHING {timeframe} DATA =====")
 
             for _, row in symbols_df.iterrows():
@@ -333,23 +334,6 @@ def download_equity_price_data_all_timeframes(conn,symbol):
 
                 try:
                     last_date = get_last_price_date(conn, symbol_id, timeframe)
-
-                    # helper to detect timeout-like exceptions
-                    def is_timeout_exception(exc):
-                        try:
-                            if isinstance(exc, (requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout, socket.timeout)):
-                                return True
-                        except Exception:
-                            pass
-                        try:
-                            if URLLibReadTimeout and isinstance(exc, URLLibReadTimeout):
-                                return True
-                        except Exception:
-                            pass
-                        msg = str(exc).lower()
-                        if 'timeout' in msg or 'timed out' in msg:
-                            return True
-                        return False
 
                     # If incremental run and computed start date is in the future, skip
                     if last_date is not None:
@@ -362,56 +346,34 @@ def download_equity_price_data_all_timeframes(conn,symbol):
                         except Exception as e:
                             log(f"{symbol_name} | {timeframe} | WARN: could not parse last_date '{last_date}': {e}")
 
-                    # try download with a small retry loop to better log timeouts
-                    df = None
-                    max_attempts = 3
-                    for attempt in range(1, max_attempts + 1):
+                    # Download data (single attempt)
+                    if last_date is None:
+                        log(f"{symbol_name} | {timeframe} | FULL DOWNLOAD")
                         try:
-                            # FIRST RUN → FULL DOWNLOAD
-                            if last_date is None:
-                                log(f"{symbol_name} | {timeframe} | FULL DOWNLOAD (attempt {attempt})")
-                                df = yf.download(
-                                    f"{symbol_name}.NS",
-                                    period="max",
-                                    interval=timeframe,
-                                    auto_adjust=False,
-                                    progress=False
-                                )
-                            # INCREMENTAL RUN
-                            else:
-                                start_date = (
-                                    datetime.strptime(last_date, "%Y-%m-%d")
-                                    + timedelta(days=1)
-                                ).strftime("%Y-%m-%d")
-
-                                log(f"{symbol_name} | {timeframe} | FROM {start_date} (attempt {attempt})")
-                                df = yf.download(
-                                    f"{symbol_name}.NS",
-                                    interval=timeframe,
-                                    start=start_date,
-                                    auto_adjust=False,
-                                    progress=False
-                                )
-
-                            # successful download; break retry loop
-                            break
-
+                            df = yf.download(
+                                f"{symbol_name}.NS",
+                                period="max",
+                                interval=timeframe,
+                                end=end_dt,
+                                auto_adjust=False,
+                                progress=False
+                            )
                         except Exception as e:
-                            if is_timeout_exception(e):
-                                log(f"{symbol_name} | {timeframe} | TIMEOUT attempt {attempt}/{max_attempts}: {e}")
-                                if attempt < max_attempts:
-                                    time.sleep(1 * attempt)
-                                    continue
-                                else:
-                                    log(f"{symbol_name} | {timeframe} | FAILED after {max_attempts} timeout attempts")
-                                    df = None
-                                    break
-                            else:
-                                log(f"{symbol_name} | {timeframe} | FAILED: {e}")
-                                df = None
-                                break
+                            # fallback; log anything unexpected
+                            log(f"{symbol_name} | {timeframe} | FAILED: {e}")
+                    else:
+                        start_date = (datetime.strptime(last_date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+                        log(f"{symbol_name} | {timeframe} | FROM {start_date}")
+                        df = yf.download(
+                            f"{symbol_name}.NS",
+                            interval=timeframe,
+                            start=start_date,
+                            end=end_dt,
+                            auto_adjust=False,
+                            progress=False
+                        )
 
-                    if df is None or getattr(df, 'empty', False):
+                    if df is None or df.empty:
                         log(f"{symbol_name} | {timeframe} | NO NEW DATA")
                         continue
 
@@ -420,7 +382,7 @@ def download_equity_price_data_all_timeframes(conn,symbol):
 
                 except Exception as e:
                     # fallback; log anything unexpected
-                    log(f"{symbol_name} | {timeframe} | FAILED (outer): {e}")
+                    log(f"{symbol_name} | {timeframe} | FAILED: {e}")
 
         log("✅ PRICE DATA UPDATE COMPLETED")
 
@@ -431,10 +393,8 @@ def download_equity_price_data_all_timeframes(conn,symbol):
         close_db_connection(conn)
         
 # DOWNLOAD INDEX SYMBOLS FROM YAHOO FINANCE
-def download_index_price_data_all_timeframes(conn,lookback_years=20):   
-    """
-    Incrementally update index_price_data for all timeframes from Yahoo Finance
-    """  
+def download_index_price_data_all_timeframes(conn,daily_dt,weekly_dt,monthly_dt,lookback_years=20):   
+
     cur = conn.cursor()
 
     # --------------------------------------------------
@@ -455,6 +415,10 @@ def download_index_price_data_all_timeframes(conn,lookback_years=20):
 
     for index_id, index_code, yahoo_symbol in indices:
         for timeframe in FREQUENCIES:
+            end_dt = (
+                        datetime.strptime({"1d": daily_dt, "1wk": weekly_dt, "1mo": monthly_dt}[timeframe], "%Y-%m-%d")
+                        + timedelta(days=1)
+                    ).strftime("%Y-%m-%d")
             # MONTHLY SKIP CONTROL
             if SKIP_MONTHLY and timeframe == "1mo":
                 log("Skipping 1mo (monthly-skip mode)")
@@ -500,6 +464,7 @@ def download_index_price_data_all_timeframes(conn,lookback_years=20):
                     yahoo_symbol,
                     start=start.strftime("%Y-%m-%d"),
                     interval=timeframe,
+                    end=end_dt,
                     auto_adjust=False,
                     progress=False
                 )
@@ -653,41 +618,3 @@ def refresh_52week_stats(conn, type_):
 
     finally:
         cur.close()
-        
-def check_export_csv_missing_data(conn, is_index=False):
-    try:
-        cur = conn.cursor()
-
-        # pick correct tables based on index / equity
-        symbols_table  = "index_symbols" if is_index else "equity_symbols"
-        price_table    = "index_price_data" if is_index else "equity_price_data"
-        id_col         = "index_id" if is_index else "symbol_id"
-        output_file    = MISSING_INDEX if is_index else MISSING_EQUITY
-
-        # get template from SQL_MAP and format at runtime
-        sql_template = SQL_MAP[3]   # <--- this is the change
-        sql_query = sql_template.format(
-            symbols_table=symbols_table,
-            price_table=price_table,
-            id_col=id_col
-        )
-        cur.execute(sql_query)
-        rows = cur.fetchall()
-
-        if not rows:
-            print("✅ No missing symbols found.")
-            return
-
-        missing_symbols = [row[0] for row in rows]
-
-        # write CSV
-        with open(output_file, "w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(missing_symbols)
-
-        print(f"📁 Export complete! {len(missing_symbols)} symbols written to {output_file}")
-        print("📝 Symbols:")
-        print(", ".join(missing_symbols))
-
-    except Exception as e:
-        log(f"CHECK EXPORT CSV MISSING DATA FAILED: {e}")
